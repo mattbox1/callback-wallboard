@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Callback Pipeline — Wallboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#060608;min-height:100vh;font-family:'Barlow',sans-serif;color:#e0e0e0}
+
+/* subtle rings */
+body::before{
+  content:'';position:fixed;top:-300px;left:50%;transform:translateX(-50%);
+  width:1000px;height:1000px;border-radius:50%;
+  border:1px solid rgba(0,200,255,.12);
+  box-shadow:0 0 0 80px rgba(0,200,255,.05),0 0 0 160px rgba(0,200,255,.04),0 0 0 260px rgba(0,200,255,.025),0 0 0 380px rgba(0,200,255,.015);
+  background:radial-gradient(ellipse at center,rgba(0,200,255,.05) 0%,transparent 60%);
+  pointer-events:none;z-index:0
+}
+
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:1.5rem 2rem 4rem}
+
+/* nav */
+nav{display:flex;align-items:center;justify-content:space-between;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:3rem}
+.nav-brand{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.01em;color:#fff}
+.nav-brand span{color:#00c8ff}
+.nav-right{display:flex;align-items:center;gap:8px}
+.live-pill{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:5px 14px;font-size:11px;color:#888;font-family:'DM Mono',monospace}
+.live-dot{width:7px;height:7px;border-radius:50%;background:#00e5a0;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.date-pill{background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.25);border-radius:30px;padding:5px 14px;font-size:11px;color:#00c8ff;font-family:'DM Mono',monospace}
+
+/* hero title */
+.hero{margin-bottom:2.5rem}
+.hero-sub{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#444;margin-bottom:.5rem}
+.hero h1{font-family:'Barlow Condensed',sans-serif;font-size:56px;font-weight:800;line-height:.95;letter-spacing:-.02em;text-transform:uppercase}
+.hero h1 .w{color:#fff}
+.hero h1 .c{color:#00c8ff}
+
+/* metrics */
+.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:2.5rem}
+.mc{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,background .2s}
+.mc:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}
+.mc::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--c)}
+.mc.c1{--c:#EF9F27}.mc.c2{--c:#00c8ff}.mc.c3{--c:#f87171}.mc.c4{--c:#a78bfa}.mc.c5{--c:#00e5a0}.mc.c6{--c:#60a5fa}
+.mc-lbl{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:10px}
+.mc-val{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:800;line-height:1;letter-spacing:-.01em}
+.mc.c1 .mc-val{color:#EF9F27}.mc.c2 .mc-val{color:#00c8ff}.mc.c3 .mc-val{color:#f87171}
+.mc.c4 .mc-val{color:#a78bfa}.mc.c5 .mc-val{color:#00e5a0}.mc.c6 .mc-val{color:#60a5fa}
+
+/* section heading */
+.sec-head{display:flex;align-items:center;gap:12px;margin:2.5rem 0 .75rem}
+.sec-head-lbl{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#444}
+.sec-head::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}
+
+/* week strips */
+.week-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:.5rem}
+.dc{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;transition:border-color .2s}
+.dc:hover{border-color:rgba(255,255,255,.12)}
+.dc.tod{border-color:rgba(0,200,255,.4);background:rgba(0,200,255,.04)}
+.dc.dim{opacity:.3;pointer-events:none}
+.dc-lbl{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#444;margin-bottom:4px}
+.dc-lbl.tl{color:#00c8ff}
+.dc-n{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:800;color:#fff;line-height:1;margin-bottom:6px}
+.dc.dim .dc-n{color:#2a2a2a}
+.sl{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#444;padding:1.5px 0;gap:4px}
+.sl .dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.sl .sn{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl .sc{font-weight:500;color:#666;font-family:'DM Mono',monospace;font-size:10px}
+.sl.pri .sn,.sl.pri .sc{color:#f87171;font-weight:600}
+
+/* agent tabs */
+.tabs{display:flex;gap:6px;margin-bottom:1rem}
+.tb{padding:7px 18px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:transparent;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.06em;color:#555;font-family:'Barlow',sans-serif;text-transform:uppercase;transition:all .15s}
+.tb:hover{color:#aaa;border-color:rgba(255,255,255,.2)}
+.tb.on{background:rgba(255,255,255,.06);color:#fff;border-color:rgba(255,255,255,.2)}
+
+/* agent grid */
+.ag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px;margin-bottom:.5rem}
+.ag{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 14px;transition:border-color .2s}
+.ag:hover{border-color:rgba(255,255,255,.1)}
+.ag.has-pri{border-color:rgba(248,113,113,.25)}
+.ag-hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.av{width:32px;height:32px;border-radius:50%;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.2);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:#00c8ff;flex-shrink:0;letter-spacing:.04em}
+.ag-nm{font-size:13px;font-weight:600;color:#ddd;line-height:1.2}
+.ag-ct{font-size:11px;color:#444;font-family:'DM Mono',monospace}
+.pb{display:inline-block;background:rgba(248,113,113,.15);color:#f87171;font-size:9px;padding:1px 7px;border-radius:10px;font-weight:700;margin-left:4px;border:1px solid rgba(248,113,113,.25);letter-spacing:.04em;text-transform:uppercase}
+.ag-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
+.ag-sn{font-size:11px;color:#444;display:flex;align-items:center;gap:6px}
+.ag-sn.pri{color:#f87171}
+.ag-sc{font-size:11px;font-weight:600;background:rgba(255,255,255,.05);color:#777;padding:1px 8px;border-radius:4px;font-family:'DM Mono',monospace}
+.ag-sc.pri{background:rgba(248,113,113,.15);color:#f87171}
+
+/* queue */
+.flt{display:flex;gap:8px;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+.flt select{font-size:12px;padding:7px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#aaa;font-family:'Barlow',sans-serif;cursor:pointer;transition:border-color .15s}
+.flt select:focus{outline:none;border-color:rgba(0,200,255,.4)}
+.flt option{background:#111}
+.shw{font-size:11px;color:#444;margin-left:auto;font-family:'DM Mono',monospace}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:.75rem}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:#444;font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.leg-dot{width:6px;height:6px;border-radius:50%}
+.qw{overflow-x:auto}
+table.qt{width:100%;border-collapse:collapse;font-size:13px}
+table.qt th{font-size:10px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.1em;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;white-space:nowrap;font-family:'Barlow Condensed',sans-serif}
+table.qt td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;white-space:nowrap;color:#bbb;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+table.qt tr.pr td{background:rgba(248,113,113,.05);color:#f87171}
+table.qt tr:hover td{background:rgba(255,255,255,.03)}
+.pill{display:inline-block;font-size:10px;padding:3px 10px;border-radius:20px;font-weight:700;white-space:nowrap;font-family:'DM Mono',monospace;letter-spacing:.03em}
+.p-pri{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.p-hi{background:rgba(239,159,39,.12);color:#EF9F27;border:1px solid rgba(239,159,39,.3)}
+.p-nm{background:rgba(255,255,255,.05);color:#555;border:1px solid rgba(255,255,255,.08)}
+.tc{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:#ccc}
+.tc.pr{color:#f87171}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="nav-brand">plan<span>.</span>com <span style="color:#333;font-weight:400;font-size:14px;margin-left:4px">· callback pipeline</span></div>
+    <div class="nav-right">
+      <span class="live-pill"><span class="live-dot"></span>Live</span>
+      <span class="date-pill">Friday 5 June 2026</span>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-sub">Account managers · callbacks</div>
+    <h1>
+      <span class="w">Callback<br></span>
+      <span class="c">Wallboard</span>
+    </h1>
+  </div>
+
+  <div class="metrics">
+    <div class="mc c1"><div class="mc-lbl">Due today</div><div class="mc-val">93</div></div>
+    <div class="mc c2"><div class="mc-lbl">Active agents</div><div class="mc-val">14</div></div>
+    <div class="mc c3"><div class="mc-lbl">Priority today</div><div class="mc-val">4</div></div>
+    <div class="mc c4"><div class="mc-lbl">Quoted verbal</div><div class="mc-val">12</div></div>
+    <div class="mc c5"><div class="mc-lbl">Quoted email</div><div class="mc-val">10</div></div>
+    <div class="mc c6"><div class="mc-lbl">Due next week</div><div class="mc-val">94</div></div>
+  </div>
+
+  <div class="sec-head"><span class="sec-head-lbl">This week</span></div>
+  <div class="week-strip" style="margin-bottom:1.5rem">
+    <div class="dc dim"><div class="dc-lbl">Mon 01 Jun</div><div class="dc-n">—</div></div>
+    <div class="dc dim"><div class="dc-lbl">Tue 02 Jun</div><div class="dc-n">—</div></div>
+    <div class="dc dim"><div class="dc-lbl">Wed 03 Jun</div><div class="dc-n">—</div></div>
+    <div class="dc dim"><div class="dc-lbl">Thu 04 Jun</div><div class="dc-n">—</div></div>
+    <div class="dc tod">
+      <div class="dc-lbl tl">Fri 05 Jun — today</div><div class="dc-n">93</div>
+      <div class="sl pri"><span class="dot" style="background:#f87171"></span><span class="sn">Awaiting PAC</span><span class="sc">4</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">12</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd email</span><span class="sc">10</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Quoted</span><span class="sc">4</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">61</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Not elig.</span><span class="sc">2</span></div>
+    </div>
+  </div>
+
+  <div class="sec-head"><span class="sec-head-lbl">Next week</span></div>
+  <div class="week-strip" style="margin-bottom:1.5rem">
+    <div class="dc">
+      <div class="dc-lbl">Mon 08 Jun</div><div class="dc-n">32</div>
+      <div class="sl pri"><span class="dot" style="background:#f87171"></span><span class="sn">Awaiting Sign</span><span class="sc">1</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">5</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd email</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Quoted</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">19</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Not elig.</span><span class="sc">1</span></div>
+    </div>
+    <div class="dc">
+      <div class="dc-lbl">Tue 09 Jun</div><div class="dc-n">15</div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Quoted</span><span class="sc">1</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">10</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Not elig.</span><span class="sc">1</span></div>
+    </div>
+    <div class="dc">
+      <div class="dc-lbl">Wed 10 Jun</div><div class="dc-n">21</div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">5</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd email</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">10</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Not elig.</span><span class="sc">3</span></div>
+    </div>
+    <div class="dc">
+      <div class="dc-lbl">Thu 11 Jun</div><div class="dc-n">9</div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">2</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd email</span><span class="sc">1</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Quoted</span><span class="sc">1</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Not elig.</span><span class="sc">2</span></div>
+    </div>
+    <div class="dc">
+      <div class="dc-lbl">Fri 12 Jun</div><div class="dc-n">17</div>
+      <div class="sl pri"><span class="dot" style="background:#f87171"></span><span class="sn">Awaiting PAC</span><span class="sc">1</span></div>
+      <div class="sl pri"><span class="dot" style="background:#f87171"></span><span class="sn">Awaiting Sign</span><span class="sc">2</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd verbal</span><span class="sc">4</span></div>
+      <div class="sl"><span class="dot" style="background:#EF9F27"></span><span class="sn">Qtd email</span><span class="sc">3</span></div>
+      <div class="sl"><span class="dot" style="background:#333"></span><span class="sn">Cust. req.</span><span class="sc">7</span></div>
+    </div>
+  </div>
+
+  <div class="sec-head"><span class="sec-head-lbl">By account manager</span></div>
+  <div class="tabs">
+    <button class="tb on" onclick="swAg(this)">Today</button>
+    <button class="tb" onclick="swAg(this)">This week</button>
+  </div>
+  <div class="ag-grid" id="ag-grid"></div>
+
+  <div class="sec-head"><span class="sec-head-lbl">Today's callback queue</span></div>
+  <div class="legend">
+    <span class="leg"><span class="leg-dot" style="background:#f87171"></span>Priority</span>
+    <span class="leg"><span class="leg-dot" style="background:#EF9F27"></span>Quoted</span>
+    <span class="leg"><span class="leg-dot" style="background:#444"></span>Standard</span>
+  </div>
+  <div class="flt">
+    <select id="qa" onchange="renderQ()"><option value="">All agents</option></select>
+    <select id="qs" onchange="renderQ()">
+      <option value="">All stages</option>
+      <option value="AWAITING PAC">Awaiting PAC</option>
+      <option value="AWAITING SIGN">Awaiting Sign</option>
+      <option value="QUOTED VERBAL">Quoted verbal</option>
+      <option value="QUOTED EMAIL">Quoted email</option>
+      <option value="QUOTED">Quoted</option>
+      <option value="CUSTOMER REQUESTED">Customer requested</option>
+      <option value="NOT ELIGIBLE - PIPELINED">Not eligible</option>
+    </select>
+    <span class="shw" id="shw"></span>
+  </div>
+  <div class="qw">
+    <table class="qt">
+      <thead><tr><th>Due</th><th>Lead ID</th><th>Company</th><th>Stage</th><th>Agent</th><th>Phone</th><th>Last call</th></tr></thead>
+      <tbody id="qb"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const PRI=['AWAITING PAC','AWAITING DD','AWAITING SIGN'];
+const HI=['QUOTED VERBAL','QUOTED EMAIL','QUOTED'];
+const Q=[
+  {t:'09:59',id:8597963,co:'Azhar Hussain',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07359 187678',lc:'04 Jun'},
+  {t:'10:00',id:6423384,co:'Vega Designs Ltd',st:'AWAITING PAC',ag:'Alexandra Anderson',ph:'07393 676525',lc:'03 Jun'},
+  {t:'10:00',id:5975856,co:'Robert',st:'AWAITING PAC',ag:'Tyler Smith',ph:'07702 341681',lc:'04 Jun'},
+  {t:'10:00',id:6364949,co:'Barnsley Independent',st:'QUOTED',ag:'Kaiden Woodhead',ph:'07539 191364',lc:'01 Jun'},
+  {t:'10:00',id:5953487,co:'TA: Spencer',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07973 221019',lc:'04 Jun'},
+  {t:'10:00',id:7251669,co:'Crisp N Fry',st:'QUOTED EMAIL',ag:'Kaiden Woodhead',ph:'07399 415151',lc:'02 Jun'},
+  {t:'10:00',id:8037612,co:'ABC Property Dev.',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07544 489599',lc:'04 Jun'},
+  {t:'10:00',id:8929826,co:'SS Gate Solutions',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07922 253210',lc:'04 Jun'},
+  {t:'10:00',id:562211,co:'Freydanck Builder',st:'CUSTOMER REQUESTED',ag:'Kayleigh Jeremiah',ph:'07875 645836',lc:'04 Jun'},
+  {t:'10:00',id:6379388,co:'Aboykir Hotel',st:'QUOTED EMAIL',ag:'Alexandra Anderson',ph:'07855 488008',lc:'03 Jun'},
+  {t:'10:00',id:6400173,co:'Climber / Forestry',st:'CUSTOMER REQUESTED',ag:'Kayleigh Jeremiah',ph:'07496 311268',lc:'03 Jun'},
+  {t:'10:00',id:7042476,co:'Polar Express Transport',st:'CUSTOMER REQUESTED',ag:'Kayleigh Jeremiah',ph:'07860 773965',lc:'04 Jun'},
+  {t:'10:00',id:6271522,co:'Lewis Mennim',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07763 625429',lc:'29 May'},
+  {t:'10:00',id:4736279,co:'Oliver',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07948 065688',lc:'04 Jun'},
+  {t:'10:00',id:8604500,co:'SE Confirmed',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07792 016379',lc:'03 Jun'},
+  {t:'10:00',id:8198481,co:'OG Exteriors',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07948 502401',lc:'04 Jun'},
+  {t:'10:01',id:4053852,co:'PS Civils',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07463 900343',lc:'04 Jun'},
+  {t:'10:14',id:4796060,co:'Sole Trader',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07540 785021',lc:'04 Jun'},
+  {t:'11:00',id:5296897,co:'Allan Board Builders',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07837 207036',lc:'03 Jun'},
+  {t:'11:00',id:524118,co:'Dr Michael Davies Dentist',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07773 263182',lc:'03 Jun'},
+  {t:'11:00',id:4648168,co:'The Roade House',st:'QUOTED EMAIL',ag:'Tyler Smith',ph:'07970 873132',lc:'29 May'},
+  {t:'11:00',id:7349655,co:'Nick - Plumber',st:'QUOTED VERBAL',ag:'Dewi Roberts',ph:'07852 145284',lc:'04 Jun'},
+  {t:'11:00',id:5985336,co:'David Brown',st:'QUOTED',ag:'Chelsea Hodnett',ph:'07899 966176',lc:'03 Jun'},
+  {t:'11:00',id:5673792,co:'My Site 12',st:'QUOTED EMAIL',ag:'Zara Choudhry',ph:'07379 850876',lc:'29 May'},
+  {t:'11:00',id:6417657,co:'Sturp Haulage',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07791 141733',lc:'02 Jun'},
+  {t:'11:00',id:3399304,co:'CNG Fridgeations Ltd',st:'CUSTOMER REQUESTED',ag:'Alexandra Anderson',ph:'07799 690639',lc:'03 Jun'},
+  {t:'11:00',id:6423661,co:'Kustom Coatings',st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07909 333316',lc:'04 Jun'},
+  {t:'11:00',id:3763462,co:"L'Apartment Limited",st:'CUSTOMER REQUESTED',ag:'Alexandra Anderson',ph:'07769 695695',lc:'03 Jun'},
+  {t:'11:00',id:5984258,co:'SE/Ltd Confirmed',st:'CUSTOMER REQUESTED',ag:'Kayleigh Jeremiah',ph:'07837 761998',lc:'04 Jun'},
+  {t:'11:00',id:6491666,co:'The Prime Lots Nexus',st:'CUSTOMER REQUESTED',ag:'Chelsea Hodnett',ph:'07814 520898',lc:'03 Jun'},
+  {t:'11:15',id:8936574,co:'North Tawton Roundabout',st:'CUSTOMER REQUESTED',ag:'Kira Cox',ph:'07790 636920',lc:'27 May'},
+  {t:'11:15',id:8067588,co:'Remi',st:'QUOTED',ag:'Alexandra Anderson',ph:'07507 649266',lc:'03 Jun'},
+  {t:'11:18',id:6246138,co:"Bev's Hair & Beauty",st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07581 470885',lc:'04 Jun'},
+  {t:'11:30',id:2981537,co:'Plazmid Consulting',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07876 684052',lc:'03 Jun'},
+  {t:'11:59',id:3900058,co:'Valmar Group Ltd',st:'QUOTED VERBAL',ag:'Jack Davies',ph:'07703 164476',lc:'01 Jun'},
+  {t:'12:00',id:7447894,co:'Simon Strangward',st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07536 084444',lc:'04 Jun'},
+  {t:'12:00',id:8259925,co:'Kevin Phillips Sensory',st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07729 501834',lc:'04 Jun'},
+  {t:'12:00',id:1611436,co:'Clumber Farm Ltd',st:'NOT ELIGIBLE - PIPELINED',ag:'Kayleigh Jeremiah',ph:'07976 421725',lc:'04 Jun'},
+  {t:'12:00',id:6382508,co:'LF Gjabri Construction',st:'AWAITING PAC',ag:'Chelsea Hodnett',ph:'07883 198777',lc:'04 Jun'},
+  {t:'12:05',id:7379864,co:'John Heenan',st:'AWAITING PAC',ag:'Alexandra Anderson',ph:'07792 846485',lc:'03 Jun'},
+  {t:'12:05',id:6905450,co:'Ladds Electrical',st:'QUOTED EMAIL',ag:'Alexandra Anderson',ph:'07386 744457',lc:'03 Jun'},
+  {t:'12:05',id:8504026,co:'Greesh',st:'QUOTED EMAIL',ag:'Alexandra Anderson',ph:'07956 447671',lc:'03 Jun'},
+  {t:'12:15',id:2736216,co:'FG Speaker Hire',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07828 432016',lc:'02 Jun'},
+  {t:'12:15',id:5410380,co:'CP Groundworks',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07850 323613',lc:'04 Jun'},
+  {t:'12:45',id:8218273,co:'Bright Future Cleaners',st:'QUOTED VERBAL',ag:'Alexandra Anderson',ph:'07444 652348',lc:'03 Jun'},
+  {t:'12:50',id:6341987,co:'TA: Steven',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07881 402129',lc:'04 Jun'},
+  {t:'13:00',id:4328231,co:'Sam Ltd Construction',st:'QUOTED VERBAL',ag:'Emily Lloyd',ph:'07450 916292',lc:'04 Jun'},
+  {t:'13:00',id:7205849,co:'Berroch Farm Partnership',st:'CUSTOMER REQUESTED',ag:'Julian Lewis-Knowles',ph:'07530 916534',lc:'04 Jun'},
+  {t:'13:00',id:7019343,co:'Home Vision Visits',st:'QUOTED VERBAL',ag:'Ajay Saini',ph:'07703 101748',lc:'04 Jun'},
+  {t:'13:00',id:5417677,co:'North Area Ward Cambridge',st:'CUSTOMER REQUESTED',ag:'Zara Choudhry',ph:'07866 164950',lc:'29 May'},
+  {t:'13:00',id:5970148,co:'Selina Domestic Appliances',st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07908 106199',lc:'04 Jun'},
+  {t:'13:00',id:6258623,co:'Maycraft',st:'QUOTED EMAIL',ag:'Zara Choudhry',ph:'07900 412299',lc:'28 May'},
+  {t:'13:14',id:7300407,co:"TJ's Waste Removals",st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07944 139874',lc:'04 Jun'},
+  {t:'13:16',id:5837960,co:'Barry Vardy Pilates',st:'QUOTED',ag:'Tom Gorman',ph:'07817 717594',lc:'04 Jun'},
+  {t:'13:29',id:6424686,co:'AW Advance Ltd',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07590 000420',lc:'04 Jun'},
+  {t:'13:30',id:6158940,co:'Scottish Summer Spectacular',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07989 981410',lc:'04 Jun'},
+  {t:'13:30',id:5967837,co:'Infraspace Ltd',st:'QUOTED VERBAL',ag:'Alexandra Anderson',ph:'07703 768910',lc:'03 Jun'},
+  {t:'13:50',id:3439380,co:'A Star Flooring',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07379 460898',lc:'03 Jun'},
+  {t:'14:00',id:6199592,co:'Golden Eagle Plumbing',st:'QUOTED VERBAL',ag:'Emily Lloyd',ph:'07739 793328',lc:'04 Jun'},
+  {t:'14:06',id:956746,co:'Bothy Induction',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07754 839637',lc:'03 Jun'},
+  {t:'14:14',id:6494181,co:'Eluned',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07956 054327',lc:'04 Jun'},
+  {t:'14:26',id:6491976,co:'Simon',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07584 656899',lc:'04 Jun'},
+  {t:'14:30',id:8162112,co:'Boiler Guy 24/7 Ltd',st:'QUOTED EMAIL',ag:'Alexandra Anderson',ph:'07746 210558',lc:'01 Jun'},
+  {t:'14:30',id:6824063,co:'MarLen Groundworks',st:'NOT ELIGIBLE - PIPELINED',ag:'Alexandra Anderson',ph:'07599 036086',lc:'13 Mar'},
+  {t:'14:53',id:8974639,co:'PS Civils 2',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'01794 885282',lc:'03 Jun'},
+  {t:'15:00',id:6512002,co:'Paul Murnane',st:'CUSTOMER REQUESTED',ag:'Zara Choudhry',ph:'07426 366069',lc:'28 May'},
+  {t:'15:00',id:6900807,co:'Barking 2 Sparkling',st:'CUSTOMER REQUESTED',ag:'Kaiden Woodhead',ph:'07777 127292',lc:'04 Jun'},
+  {t:'15:00',id:8494609,co:'Appaloosa Ltd',st:'CUSTOMER REQUESTED',ag:'Emily Lloyd',ph:'07788 666933',lc:'04 Jun'},
+  {t:'15:00',id:8858004,co:'Isle of Wight County Press',st:'QUOTED VERBAL',ag:'Emily Lloyd',ph:'07900 894631',lc:'03 Jun'},
+  {t:'15:00',id:3839439,co:'Potteries Garden Stoneware',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07426 010469',lc:'02 Jun'},
+  {t:'15:00',id:1226178,co:'SE Confirmed',st:'QUOTED VERBAL',ag:'Jack Davies',ph:'07813 560204',lc:'04 Jun'},
+  {t:'15:15',id:6516986,co:'Heartfordshire Hounds',st:'QUOTED EMAIL',ag:'Tyler Smith',ph:'07737 151216',lc:'02 Jun'},
+  {t:'15:30',id:1812400,co:'Wadhurst Tennis Club',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07961 904457',lc:'02 Jun'},
+  {t:'15:32',id:8256461,co:'Dinefwr Electrical',st:'CUSTOMER REQUESTED',ag:'Jack Davies',ph:'07581 688256',lc:'15 May'},
+  {t:'16:00',id:7200948,co:'Taj',st:'QUOTED VERBAL',ag:'Alexandra Anderson',ph:'07984 415635',lc:'02 Jun'},
+  {t:'16:00',id:3473917,co:'Broadstay Property Repair',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07726 592765',lc:'01 Jun'},
+  {t:'16:00',id:5943487,co:'Luke',st:'CUSTOMER REQUESTED',ag:'Emile Wedderburn-Burris',ph:'07860 287015',lc:'05 May'},
+  {t:'16:15',id:6272748,co:'Steven',st:'QUOTED VERBAL',ag:'Alexandra Anderson',ph:'07807 300938',lc:'01 Jun'},
+  {t:'16:36',id:7286991,co:'Powered Enterprise Ltd',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07716 666788',lc:'04 Jun'},
+  {t:'16:58',id:4848866,co:'Secure Container Storage',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07515 375451',lc:'29 May'},
+  {t:'17:00',id:3663028,co:'Jax Chipper Ellon',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07723 145536',lc:'04 Jun'},
+  {t:'17:00',id:6515129,co:'Puddles',st:'CUSTOMER REQUESTED',ag:'Tyler Smith',ph:'07943 274846',lc:'04 Jun'},
+  {t:'17:00',id:6216630,co:'Aquapower Cleaning',st:'CUSTOMER REQUESTED',ag:'Kayleigh Jeremiah',ph:'07969 645244',lc:'01 Jun'},
+  {t:'17:18',id:6490495,co:'SE / Confirmed',st:'QUOTED EMAIL',ag:'Jack Davies',ph:'07984 202916',lc:'04 Jun'},
+  {t:'17:30',id:5836786,co:'MV Granite Worktops',st:'QUOTED VERBAL',ag:'Emily Lloyd',ph:'07456 134623',lc:'04 Jun'},
+  {t:'17:30',id:4154648,co:'FMB Federation',st:'CUSTOMER REQUESTED',ag:'Julian Lewis-Knowles',ph:'07769 666213',lc:'04 Jun'},
+  {t:'17:45',id:6504308,co:'Ltd Confirmed',st:'CUSTOMER REQUESTED',ag:'Julian Lewis-Knowles',ph:'07856 710811',lc:'04 Jun'},
+  {t:'18:00',id:6493029,co:'Anti-Ageing Forte Bexley',st:'CUSTOMER REQUESTED',ag:'Julian Lewis-Knowles',ph:'07568 503141',lc:'04 Jun'},
+  {t:'18:10',id:8155322,co:'Noir Flare Jewellers',st:'CUSTOMER REQUESTED',ag:'Tom Gorman',ph:'07429 227612',lc:'04 Jun'},
+  {t:'18:48',id:8495700,co:'Media Manor Ltd',st:'CUSTOMER REQUESTED',ag:'Jack Davies',ph:'07802 201717',lc:'04 Jun'},
+];
+
+function ini(n){return n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+function pc(s){return PRI.includes(s)?'p-pri':HI.includes(s)?'p-hi':'p-nm'}
+function ss(s){const m={'CUSTOMER REQUESTED':'Cust. req.','NOT ELIGIBLE - PIPELINED':'Not eligible','QUOTED VERBAL':'Qtd verbal','QUOTED EMAIL':'Qtd email','AWAITING PAC':'Awaiting PAC','AWAITING DD':'Awaiting DD','AWAITING SIGN':'Awaiting Sign','QUOTED':'Quoted'};return m[s]||s}
+
+function renderAgents(){
+  const map={};
+  Q.forEach(r=>{if(!map[r.ag])map[r.ag]=[];map[r.ag].push(r);});
+  const ags=Object.keys(map).sort((a,b)=>{
+    const pa=map[a].some(r=>PRI.includes(r.st))?0:1;
+    const pb=map[b].some(r=>PRI.includes(r.st))?0:1;
+    if(pa!==pb)return pa-pb;
+    return map[b].length-map[a].length;
+  });
+  document.getElementById('ag-grid').innerHTML=ags.map(name=>{
+    const rows=map[name];
+    const hasPri=rows.some(r=>PRI.includes(r.st));
+    const bySt={};
+    rows.forEach(r=>{bySt[r.st]=(bySt[r.st]||0)+1;});
+    const sorted=Object.entries(bySt).sort((a,b)=>{
+      const pa=PRI.includes(a[0])?0:HI.includes(a[0])?1:2;
+      const pb=PRI.includes(b[0])?0:HI.includes(b[0])?1:2;
+      return pa-pb;
+    });
+    return `<div class="ag${hasPri?' has-pri':''}">
+      <div class="ag-hd">
+        <div class="av">${ini(name)}</div>
+        <div>
+          <div class="ag-nm">${name}${hasPri?'<span class="pb">priority</span>':''}</div>
+          <div class="ag-ct">${rows.length} callback${rows.length!==1?'s':''} today</div>
+        </div>
+      </div>
+      <div>${sorted.map(([s,c])=>`
+        <div class="ag-row">
+          <span class="ag-sn${PRI.includes(s)?' pri':''}">
+            <span style="width:5px;height:5px;border-radius:50%;flex-shrink:0;display:inline-block;background:${PRI.includes(s)?'#f87171':HI.includes(s)?'#EF9F27':'#333'}"></span>
+            ${ss(s)}
+          </span>
+          <span class="ag-sc${PRI.includes(s)?' pri':''}">${c}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function swAg(btn){
+  document.querySelectorAll('.tb').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  renderAgents();
+}
+
+const uAgents=[...new Set(Q.map(r=>r.ag))].sort();
+const sel=document.getElementById('qa');
+uAgents.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;sel.appendChild(o);});
+
+function renderQ(){
+  const ag=document.getElementById('qa').value;
+  const st=document.getElementById('qs').value;
+  let rows=Q.filter(r=>(!ag||r.ag===ag)&&(!st||r.st===st));
+  rows=[...rows].sort((a,b)=>{
+    const pa=PRI.includes(a.st)?0:1,pb=PRI.includes(b.st)?0:1;
+    return pa!==pb?pa-pb:a.t.localeCompare(b.t);
+  });
+  document.getElementById('shw').textContent=`Showing ${rows.length} of ${Q.length}`;
+  document.getElementById('qb').innerHTML=rows.map(r=>`<tr class="${PRI.includes(r.st)?'pr':''}">
+    <td><span class="tc${PRI.includes(r.st)?' pr':''}">${r.t}</span></td>
+    <td style="color:#444;font-size:11px;font-family:'DM Mono',monospace">${r.id}</td>
+    <td>${r.co}</td>
+    <td><span class="pill ${pc(r.st)}">${ss(r.st)}</span></td>
+    <td style="color:#666">${r.ag.split(' ').map((w,i)=>i===0?w[0]+'.':w).join(' ')}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:11px;color:#444">${r.ph}</td>
+    <td style="font-size:11px;color:#444">${r.lc}</td>
+  </tr>`).join('');
+}
+
+renderAgents();
+renderQ();
+</script>
+</body>
+</html>
