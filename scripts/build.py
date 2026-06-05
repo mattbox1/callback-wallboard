@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import datetime, timedelta
-import sys, os
+import sys, os, base64, io
 
 CSV_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'callbacks.csv')
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), '..', 'index.html')
@@ -28,12 +28,30 @@ def pill_class(s):
 def initials(name):
     return ''.join(w[0] for w in str(name).split())[:2].upper()
 
+def read_csv_smart(path):
+    """Read CSV handling base64 encoded content from Power Automate"""
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        raw = f.read().strip()
+    # Try base64 decode first
+    try:
+        decoded = base64.b64decode(raw).decode('utf-8-sig')
+        # Check if decoded looks like a CSV (has commas and newlines)
+        if ',' in decoded and '\n' in decoded:
+            print("Decoded base64 content successfully")
+            return pd.read_csv(io.StringIO(decoded))
+    except Exception:
+        pass
+    # Fall back to reading as plain CSV
+    print("Reading as plain CSV")
+    return pd.read_csv(path, encoding='utf-8-sig')
+
 def build():
     try:
-        df = pd.read_csv(CSV_PATH, encoding='utf-8-sig')
+        df = read_csv_smart(CSV_PATH)
     except Exception as e:
         print(f"Error reading CSV: {e}"); sys.exit(1)
 
+    print(f"Columns found: {df.columns.tolist()}")
     df.columns = df.columns.str.strip()
     df['callback_date'] = pd.to_datetime(df['callback_date'], dayfirst=True, errors='coerce')
     df['last_call_date'] = pd.to_datetime(df['last_call_date'], dayfirst=True, errors='coerce')
@@ -126,27 +144,179 @@ def build():
     agent_list = sorted(agent_map.keys())
     agent_options = ''.join(f'<option value="{a}">{a}</option>' for a in agent_list)
 
-    with open(os.path.join(os.path.dirname(__file__),'..','_template.html'),'r',encoding='utf-8') as f:
-        template = f.read()
-
-    html = template \
-        .replace('{{TODAY_LABEL}}', today_label) \
-        .replace('{{UPDATED_AT}}', updated_at) \
-        .replace('{{TOTAL_TODAY}}', str(total_today)) \
-        .replace('{{ACTIVE_AGENTS}}', str(active_agents)) \
-        .replace('{{PRIORITY_TODAY}}', str(priority_today)) \
-        .replace('{{QUOTED_VERBAL}}', str(quoted_verbal)) \
-        .replace('{{QUOTED_EMAIL}}', str(quoted_email)) \
-        .replace('{{TOTAL_NEXT_WEEK}}', str(total_next_week)) \
-        .replace('{{THIS_WEEK_STRIP}}', week_strip_html(this_week)) \
-        .replace('{{NEXT_WEEK_STRIP}}', week_strip_html(next_week)) \
-        .replace('{{AGENT_CARDS}}', agent_cards_html()) \
-        .replace('{{AGENT_OPTIONS}}', agent_options) \
-        .replace('{{QUEUE_ROWS}}', queue_rows_html())
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="3600">
+<title>Callback Wallboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+html,body{{background:#060608;min-height:100vh;font-family:'Barlow',sans-serif;color:#e0e0e0}}
+body::before{{content:'';position:fixed;top:-300px;left:50%;transform:translateX(-50%);width:1000px;height:1000px;border-radius:50%;border:1px solid rgba(0,200,255,.12);box-shadow:0 0 0 80px rgba(0,200,255,.05),0 0 0 160px rgba(0,200,255,.04),0 0 0 260px rgba(0,200,255,.025),0 0 0 380px rgba(0,200,255,.015);background:radial-gradient(ellipse at center,rgba(0,200,255,.05) 0%,transparent 60%);pointer-events:none;z-index:0}}
+.wrap{{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:1.5rem 2rem 4rem}}
+nav{{display:flex;align-items:center;justify-content:space-between;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:3rem}}
+.nav-brand{{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.01em;color:#fff}}
+.nav-brand span{{color:#00c8ff}}
+.nav-right{{display:flex;align-items:center;gap:8px}}
+.live-pill{{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:5px 14px;font-size:11px;color:#888;font-family:'DM Mono',monospace}}
+.live-dot{{width:7px;height:7px;border-radius:50%;background:#00e5a0;animation:blink 2s infinite}}
+@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.3}}}}
+.date-pill{{background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.25);border-radius:30px;padding:5px 14px;font-size:11px;color:#00c8ff;font-family:'DM Mono',monospace}}
+.updated{{font-size:10px;color:#444;font-family:'DM Mono',monospace}}
+.hero{{margin-bottom:2.5rem}}
+.hero-sub{{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#444;margin-bottom:.5rem}}
+.hero h1{{font-family:'Barlow Condensed',sans-serif;font-size:56px;font-weight:800;line-height:.95;letter-spacing:-.02em;text-transform:uppercase}}
+.hero h1 .w{{color:#fff}}.hero h1 .c{{color:#00c8ff}}
+.metrics{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:2.5rem}}
+.mc{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,background .2s}}
+.mc:hover{{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}}
+.mc::after{{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--c)}}
+.mc.c1{{--c:#EF9F27}}.mc.c2{{--c:#00c8ff}}.mc.c3{{--c:#f87171}}.mc.c4{{--c:#a78bfa}}.mc.c5{{--c:#00e5a0}}.mc.c6{{--c:#60a5fa}}
+.mc-lbl{{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:10px}}
+.mc-val{{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:800;line-height:1;letter-spacing:-.01em}}
+.mc.c1 .mc-val{{color:#EF9F27}}.mc.c2 .mc-val{{color:#00c8ff}}.mc.c3 .mc-val{{color:#f87171}}
+.mc.c4 .mc-val{{color:#a78bfa}}.mc.c5 .mc-val{{color:#00e5a0}}.mc.c6 .mc-val{{color:#60a5fa}}
+.sec-head{{display:flex;align-items:center;gap:12px;margin:2.5rem 0 .75rem}}
+.sec-head-lbl{{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#444}}
+.sec-head::after{{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}}
+.week-strip{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:.5rem}}
+.dc{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;transition:border-color .2s}}
+.dc:hover{{border-color:rgba(255,255,255,.12)}}
+.dc.tod{{border-color:rgba(0,200,255,.4);background:rgba(0,200,255,.04)}}
+.dc.dim{{opacity:.3;pointer-events:none}}
+.dc-lbl{{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#444;margin-bottom:4px}}
+.dc-lbl.tl{{color:#00c8ff}}
+.dc-n{{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:800;color:#fff;line-height:1;margin-bottom:6px}}
+.sl{{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#444;padding:1.5px 0;gap:4px}}
+.sl .dot{{width:5px;height:5px;border-radius:50%;flex-shrink:0}}
+.sl .sn{{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.sl .sc{{font-weight:500;color:#666;font-family:'DM Mono',monospace;font-size:10px}}
+.sl.pri .sn,.sl.pri .sc{{color:#f87171;font-weight:600}}
+.tabs{{display:flex;gap:6px;margin-bottom:1rem}}
+.tb{{padding:7px 18px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:transparent;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.06em;color:#555;font-family:'Barlow',sans-serif;text-transform:uppercase;transition:all .15s}}
+.tb.on{{background:rgba(255,255,255,.06);color:#fff;border-color:rgba(255,255,255,.2)}}
+.ag-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px;margin-bottom:.5rem}}
+.ag{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 14px;transition:border-color .2s}}
+.ag:hover{{border-color:rgba(255,255,255,.1)}}
+.ag.has-pri{{border-color:rgba(248,113,113,.25)}}
+.ag-hd{{display:flex;align-items:center;gap:10px;margin-bottom:10px}}
+.av{{width:32px;height:32px;border-radius:50%;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.2);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;color:#00c8ff;flex-shrink:0;letter-spacing:.04em}}
+.ag-nm{{font-size:13px;font-weight:600;color:#ddd;line-height:1.2}}
+.ag-ct{{font-size:11px;color:#444;font-family:'DM Mono',monospace}}
+.pb{{display:inline-block;background:rgba(248,113,113,.15);color:#f87171;font-size:9px;padding:1px 7px;border-radius:10px;font-weight:700;margin-left:4px;border:1px solid rgba(248,113,113,.25);letter-spacing:.04em;text-transform:uppercase}}
+.ag-row{{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}}
+.ag-sn{{font-size:11px;color:#444;display:flex;align-items:center;gap:6px}}
+.ag-sn.pri{{color:#f87171}}
+.ag-sc{{font-size:11px;font-weight:600;background:rgba(255,255,255,.05);color:#777;padding:1px 8px;border-radius:4px;font-family:'DM Mono',monospace}}
+.ag-sc.pri{{background:rgba(248,113,113,.15);color:#f87171}}
+.flt{{display:flex;gap:8px;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}}
+.flt select{{font-size:12px;padding:7px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#aaa;font-family:'Barlow',sans-serif;cursor:pointer}}
+.flt select:focus{{outline:none;border-color:rgba(0,200,255,.4)}}
+.flt option{{background:#111}}
+.shw{{font-size:11px;color:#444;margin-left:auto;font-family:'DM Mono',monospace}}
+.legend{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:.75rem}}
+.leg{{display:flex;align-items:center;gap:6px;font-size:11px;color:#444;font-weight:500;letter-spacing:.04em;text-transform:uppercase}}
+.leg-dot{{width:6px;height:6px;border-radius:50%}}
+.qw{{overflow-x:auto}}
+table.qt{{width:100%;border-collapse:collapse;font-size:13px}}
+table.qt th{{font-size:10px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.1em;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;white-space:nowrap;font-family:'Barlow Condensed',sans-serif}}
+table.qt td{{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;white-space:nowrap;color:#bbb;max-width:200px;overflow:hidden;text-overflow:ellipsis}}
+table.qt tr.pr td{{background:rgba(248,113,113,.05);color:#f87171}}
+table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
+.pill{{display:inline-block;font-size:10px;padding:3px 10px;border-radius:20px;font-weight:700;white-space:nowrap;font-family:'DM Mono',monospace;letter-spacing:.03em}}
+.p-pri{{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)}}
+.p-hi{{background:rgba(239,159,39,.12);color:#EF9F27;border:1px solid rgba(239,159,39,.3)}}
+.p-nm{{background:rgba(255,255,255,.05);color:#555;border:1px solid rgba(255,255,255,.08)}}
+.tc{{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:#ccc}}
+.tc.pr{{color:#f87171}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="nav-brand">plan<span>.</span>com <span style="color:#333;font-weight:400;font-size:14px;margin-left:4px">· callback pipeline</span></div>
+    <div class="nav-right">
+      <span class="updated">Updated {updated_at}</span>
+      <span class="live-pill"><span class="live-dot"></span>Live</span>
+      <span class="date-pill">{today_label}</span>
+    </div>
+  </nav>
+  <div class="hero">
+    <div class="hero-sub">Account managers · callbacks</div>
+    <h1><span class="w">Callback<br></span><span class="c">Wallboard</span></h1>
+  </div>
+  <div class="metrics">
+    <div class="mc c1"><div class="mc-lbl">Due today</div><div class="mc-val">{total_today}</div></div>
+    <div class="mc c2"><div class="mc-lbl">Active agents</div><div class="mc-val">{active_agents}</div></div>
+    <div class="mc c3"><div class="mc-lbl">Priority today</div><div class="mc-val">{priority_today}</div></div>
+    <div class="mc c4"><div class="mc-lbl">Quoted verbal</div><div class="mc-val">{quoted_verbal}</div></div>
+    <div class="mc c5"><div class="mc-lbl">Quoted email</div><div class="mc-val">{quoted_email}</div></div>
+    <div class="mc c6"><div class="mc-lbl">Due next week</div><div class="mc-val">{total_next_week}</div></div>
+  </div>
+  <div class="sec-head"><span class="sec-head-lbl">This week</span></div>
+  <div class="week-strip" style="margin-bottom:1.5rem">{week_strip_html(this_week)}</div>
+  <div class="sec-head"><span class="sec-head-lbl">Next week</span></div>
+  <div class="week-strip" style="margin-bottom:1.5rem">{week_strip_html(next_week)}</div>
+  <div class="sec-head"><span class="sec-head-lbl">By account manager</span></div>
+  <div class="tabs"><button class="tb on">Today</button></div>
+  <div class="ag-grid">{agent_cards_html()}</div>
+  <div class="sec-head"><span class="sec-head-lbl">Today\'s callback queue</span></div>
+  <div class="legend">
+    <span class="leg"><span class="leg-dot" style="background:#f87171"></span>Priority</span>
+    <span class="leg"><span class="leg-dot" style="background:#EF9F27"></span>Quoted</span>
+    <span class="leg"><span class="leg-dot" style="background:#444"></span>Standard</span>
+  </div>
+  <div class="flt">
+    <select id="qa" onchange="filterQ()">
+      <option value="">All agents</option>
+      {agent_options}
+    </select>
+    <select id="qs" onchange="filterQ()">
+      <option value="">All stages</option>
+      <option value="awaiting pac">Awaiting PAC</option>
+      <option value="awaiting sign">Awaiting Sign</option>
+      <option value="quoted verbal">Quoted verbal</option>
+      <option value="quoted email">Quoted email</option>
+      <option value="quoted">Quoted</option>
+      <option value="cust. req.">Customer requested</option>
+      <option value="not eligible">Not eligible</option>
+    </select>
+    <span class="shw" id="shw"></span>
+  </div>
+  <div class="qw">
+    <table class="qt">
+      <thead><tr><th>Due</th><th>Lead ID</th><th>Company</th><th>Stage</th><th>Agent</th><th>Phone</th><th>Last call</th></tr></thead>
+      <tbody id="qb">{queue_rows_html()}</tbody>
+    </table>
+  </div>
+</div>
+<script>
+const allRows = Array.from(document.querySelectorAll('#qb tr'));
+function filterQ() {{
+  const ag = document.getElementById('qa').value.toLowerCase();
+  const st = document.getElementById('qs').value.toLowerCase();
+  let shown = 0;
+  allRows.forEach(tr => {{
+    const cells = tr.querySelectorAll('td');
+    const rowAg = cells[4] ? cells[4].textContent.toLowerCase() : '';
+    const rowSt = cells[3] ? cells[3].textContent.toLowerCase() : '';
+    const show = (!ag || rowAg.includes(ag.split(' ').pop())) && (!st || rowSt.includes(st.split(' ')[0]));
+    tr.style.display = show ? '' : 'none';
+    if(show) shown++;
+  }});
+  document.getElementById('shw').textContent = `Showing ${{shown}} of ${{allRows.length}}`;
+}}
+filterQ();
+</script>
+</body>
+</html>'''
 
     with open(OUTPUT_PATH,'w',encoding='utf-8') as f:
         f.write(html)
-
     print(f"Built OK — {total_today} callbacks today, {priority_today} priority")
 
 if __name__=='__main__':
