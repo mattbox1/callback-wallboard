@@ -138,7 +138,8 @@ def build():
             lead_id = str(row.get('lead_id','')).strip()
             tr_cls = ' class="pr"' if is_pri else ''
             tc_cls = ' pr' if is_pri else ''
-            html += f'<tr{tr_cls}><td><span class="tc{tc_cls}">{t}</span></td><td style="color:#444;font-size:11px;font-family:\'DM Mono\',monospace">{lead_id}</td><td>{co}</td><td><span class="pill {pill_class(s)}">{stage_short(s)}</span></td><td style="color:#666">{ag_short}</td><td style="font-family:\'DM Mono\',monospace;font-size:11px;color:#444">{ph}</td><td style="font-size:11px;color:#444">{lc}</td></tr>'
+            callback_time = row['callback_date'].strftime('%H:%M') if pd.notna(row['callback_date']) else ''
+            html += f'<tr{tr_cls} data-time="{callback_time}" data-pri="{"1" if is_pri else "0"}"><td><span class="tc{tc_cls}">{t}</span></td><td style="color:#444;font-size:11px;font-family:\'DM Mono\',monospace">{lead_id}</td><td>{co}</td><td><span class="pill {pill_class(s)}">{stage_short(s)}</span></td><td style="color:#666">{ag_short}</td><td style="font-family:\'DM Mono\',monospace;font-size:11px;color:#444">{ph}</td><td style="font-size:11px;color:#444">{lc}</td></tr>'
         return html
 
     agent_list = sorted(agent_map.keys())
@@ -156,7 +157,8 @@ def build():
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{background:#060608;min-height:100vh;font-family:'Barlow',sans-serif;color:#e0e0e0}}
-body::before{{content:'';position:fixed;top:-300px;left:50%;transform:translateX(-50%);width:1000px;height:1000px;border-radius:50%;border:1px solid rgba(0,200,255,.12);box-shadow:0 0 0 80px rgba(0,200,255,.05),0 0 0 160px rgba(0,200,255,.04),0 0 0 260px rgba(0,200,255,.025),0 0 0 380px rgba(0,200,255,.015);background:radial-gradient(ellipse at center,rgba(0,200,255,.05) 0%,transparent 60%);pointer-events:none;z-index:0}}
+body::before{{content:'';position:absolute;top:-300px;left:50%;transform:translateX(-50%);width:1000px;height:1000px;border-radius:50%;border:1px solid rgba(0,200,255,.12);box-shadow:0 0 0 80px rgba(0,200,255,.05),0 0 0 160px rgba(0,200,255,.04),0 0 0 260px rgba(0,200,255,.025),0 0 0 380px rgba(0,200,255,.015);background:radial-gradient(ellipse at center,rgba(0,200,255,.05) 0%,transparent 60%);pointer-events:none;z-index:0}}
+html{{position:relative}}
 .wrap{{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:1.5rem 2rem 4rem}}
 nav{{display:flex;align-items:center;justify-content:space-between;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:3rem}}
 .nav-brand{{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.01em;color:#fff}}
@@ -233,6 +235,10 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
 .p-nm{{background:rgba(255,255,255,.05);color:#555;border:1px solid rgba(255,255,255,.08)}}
 .tc{{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:#ccc}}
 .tc.pr{{color:#f87171}}
+.overdue td{{background:rgba(251,191,36,.06)!important;color:#fbbf24!important}}
+.overdue .tc{{color:#fbbf24!important}}
+.overdue .pill{{background:rgba(251,191,36,.15)!important;color:#fbbf24!important;border-color:rgba(251,191,36,.3)!important}}
+.overdue-tag{{display:inline-block;background:rgba(251,191,36,.15);color:#fbbf24;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;margin-left:4px;border:1px solid rgba(251,191,36,.25);text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}}
 </style>
 </head>
 <body>
@@ -243,6 +249,7 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
       <span class="updated">Updated {updated_at}</span>
       <span class="live-pill"><span class="live-dot"></span>Live</span>
       <span class="date-pill">{today_label}</span>
+      <span class="live-pill" style="font-family:'DM Mono',monospace;font-size:13px;color:#00c8ff;min-width:70px;justify-content:center" id="live-clock">--:--</span>
     </div>
   </nav>
   <div class="hero">
@@ -256,6 +263,7 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
     <div class="mc c4"><div class="mc-lbl">Quoted verbal</div><div class="mc-val">{quoted_verbal}</div></div>
     <div class="mc c5"><div class="mc-lbl">Quoted email</div><div class="mc-val">{quoted_email}</div></div>
     <div class="mc c6"><div class="mc-lbl">Due next week</div><div class="mc-val">{total_next_week}</div></div>
+    <div class="mc c3" id="overdue-card" style="display:none"><div class="mc-lbl">Overdue now</div><div class="mc-val" id="overdue-count">0</div></div>
   </div>
   <div class="sec-head"><span class="sec-head-lbl">This week</span></div>
   <div class="week-strip" style="margin-bottom:1.5rem">{week_strip_html(this_week)}</div>
@@ -296,6 +304,61 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
 </div>
 <script>
 const allRows = Array.from(document.querySelectorAll('#qb tr'));
+
+// Live clock
+function updateClock() {{
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('live-clock').textContent = h+':'+m+':'+s;
+}}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Overdue logic - runs every 30 seconds
+function checkOverdue() {{
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  let overdueCount = 0;
+  const tbody = document.getElementById('qb');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  rows.forEach(tr => {{
+    const t = tr.getAttribute('data-time');
+    if (!t) return;
+    const parts = t.split(':');
+    const rowMins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    const isOverdue = rowMins < nowMins;
+    if (isOverdue) {{
+      overdueCount++;
+      tr.classList.add('overdue');
+    }} else {{
+      tr.classList.remove('overdue');
+    }}
+  }});
+
+  // Sort: overdue first, then priority, then by time
+  rows.sort((a, b) => {{
+    const aOver = a.classList.contains('overdue') ? 0 : 1;
+    const bOver = b.classList.contains('overdue') ? 0 : 1;
+    if (aOver !== bOver) return aOver - bOver;
+    const aPri = a.getAttribute('data-pri') === '1' ? 0 : 1;
+    const bPri = b.getAttribute('data-pri') === '1' ? 0 : 1;
+    if (aPri !== bPri) return aPri - bPri;
+    return (a.getAttribute('data-time') || '').localeCompare(b.getAttribute('data-time') || '');
+  }});
+  rows.forEach(r => tbody.appendChild(r));
+
+  // Update overdue metric card
+  const card = document.getElementById('overdue-card');
+  document.getElementById('overdue-count').textContent = overdueCount;
+  card.style.display = overdueCount > 0 ? '' : 'none';
+}}
+
+setInterval(checkOverdue, 30000);
+checkOverdue();
+
 function filterQ() {{
   const ag = document.getElementById('qa').value.toLowerCase();
   const st = document.getElementById('qs').value.toLowerCase();
@@ -308,7 +371,7 @@ function filterQ() {{
     tr.style.display = show ? '' : 'none';
     if(show) shown++;
   }});
-  document.getElementById('shw').textContent = `Showing ${{shown}} of ${{allRows.length}}`;
+  document.getElementById('shw').textContent = 'Showing ' + shown + ' of ' + allRows.length;
 }}
 filterQ();
 </script>
