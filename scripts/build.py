@@ -395,13 +395,16 @@ setInterval(checkOverdue, 30000);
 checkOverdue();
 
 // Auto-refresh when new data is available
-const loadedAt = new Date().toISOString();
+let lastKnownSha = null;
 async function checkForUpdates() {{
   try {{
     const res = await fetch('https://api.github.com/repos/mattbox1/callback-wallboard/commits/main?t=' + Date.now());
     const data = await res.json();
-    const latestCommit = data.commit.committer.date;
-    if (latestCommit > loadedAt) {{
+    const sha = data.sha;
+    if (lastKnownSha === null) {{
+      lastKnownSha = sha;
+      console.log('Tracking commit:', sha.slice(0,7));
+    }} else if (sha !== lastKnownSha) {{
       console.log('New data available, reloading...');
       window.location.reload();
     }}
@@ -409,7 +412,8 @@ async function checkForUpdates() {{
     console.log('Update check failed:', e);
   }}
 }}
-setInterval(checkForUpdates, 5 * 60 * 1000);
+setInterval(checkForUpdates, 2 * 60 * 1000);
+checkForUpdates();
 
 function filterQ() {{
   const ag = document.getElementById('qa').value.toLowerCase();
