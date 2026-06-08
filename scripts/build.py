@@ -88,7 +88,7 @@ def build():
     quoted_verbal = int((today_df['Call Back Stage']=='QUOTED VERBAL').sum())
     quoted_email = int((today_df['Call Back Stage']=='QUOTED EMAIL').sum())
     total_next_week = sum(d['total'] for d in next_week)
-    updated_at = datetime.now().strftime('%d %b %Y %H:%M')
+    updated_at = (datetime.now() + timedelta(hours=1)).strftime('%d %b %Y %H:%M')
     today_label = today.strftime('%A %d %B %Y')
 
     def week_strip_html(days):
@@ -177,7 +177,9 @@ nav{{display:flex;align-items:center;justify-content:space-between;padding-botto
 .mc{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,background .2s}}
 .mc:hover{{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}}
 .mc::after{{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--c)}}
-.mc.c1{{--c:#EF9F27}}.mc.c2{{--c:#00c8ff}}.mc.c3{{--c:#f87171}}.mc.c4{{--c:#a78bfa}}.mc.c5{{--c:#00e5a0}}.mc.c6{{--c:#60a5fa}}
+.mc.c1{{--c:#EF9F27}}.mc.c2{{--c:#00c8ff}}
+#overdue-card{{--c:#fb923c}}
+#overdue-card .mc-val{{color:#fb923c}}.mc.c3{{--c:#f87171}}.mc.c4{{--c:#a78bfa}}.mc.c5{{--c:#00e5a0}}.mc.c6{{--c:#60a5fa}}
 .mc-lbl{{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#555;margin-bottom:10px}}
 .mc-val{{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:800;line-height:1;letter-spacing:-.01em}}
 .mc.c1 .mc-val{{color:#EF9F27}}.mc.c2 .mc-val{{color:#00c8ff}}.mc.c3 .mc-val{{color:#f87171}}
@@ -235,21 +237,39 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
 .p-nm{{background:rgba(255,255,255,.05);color:#555;border:1px solid rgba(255,255,255,.08)}}
 .tc{{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:#ccc}}
 .tc.pr{{color:#f87171}}
-.overdue td{{background:rgba(251,191,36,.06)!important;color:#fbbf24!important}}
-.overdue .tc{{color:#fbbf24!important}}
-.overdue .pill{{background:rgba(251,191,36,.15)!important;color:#fbbf24!important;border-color:rgba(251,191,36,.3)!important}}
-.overdue-tag{{display:inline-block;background:rgba(251,191,36,.15);color:#fbbf24;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;margin-left:4px;border:1px solid rgba(251,191,36,.25);text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}}
+.overdue td{{background:rgba(249,115,22,.06)!important;color:#fb923c!important}}
+.overdue .tc{{color:#fb923c!important}}
+.overdue .pill{{background:rgba(249,115,22,.15)!important;color:#fb923c!important;border-color:rgba(249,115,22,.3)!important}}
+.overdue-tag{{display:inline-block;background:rgba(249,115,22,.15);color:#fb923c;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;margin-left:4px;border:1px solid rgba(249,115,22,.25);text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}}
+.tv-mode .hero{{margin-bottom:1.5rem}}
+.tv-mode .hero h1{{font-size:80px}}
+.tv-mode .metrics{{gap:12px;margin-bottom:1.5rem}}
+.tv-mode .mc-val{{font-size:60px}}
+.tv-mode .dc-n{{font-size:48px}}
+.tv-mode .flt,.tv-mode .legend,.tv-mode .qw,.tv-mode table.qt{{display:none!important}}
+.tv-mode .sec-head{{display:none!important}}
+.tv-mode #next-week-strip,.tv-mode #next-week-head{{display:none!important}}
+.tv-mode #this-week-strip,.tv-mode #this-week-head{{display:none!important}}
+.tv-mode .hero{{display:none!important}}
+.tv-mode .tabs{{display:none!important}}
+.tv-mode .ag-grid{{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}}
+.tv-mode .ag-nm{{font-size:15px}}
+.tv-mode .ag-ct{{font-size:13px}}
+.tv-mode .ag-sc{{font-size:13px;padding:2px 10px}}
+.tv-mode .week-strip .dc{{padding:12px 14px}}
+.tv-mode #tv-btn{{color:#00c8ff;border-color:rgba(0,200,255,.4)}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <nav>
     <div class="nav-brand">plan<span>.</span>com <span style="color:#333;font-weight:400;font-size:14px;margin-left:4px">· callback pipeline</span></div>
-    <div class="nav-right">
+    <div class="nav-right" id="nav-right">
       <span class="updated">Updated {updated_at}</span>
       <span class="live-pill"><span class="live-dot"></span>Live</span>
       <span class="date-pill">{today_label}</span>
       <span class="live-pill" style="font-family:'DM Mono',monospace;font-size:13px;color:#00c8ff;min-width:70px;justify-content:center" id="live-clock">--:--</span>
+      <button onclick="toggleTV()" id="tv-btn" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:5px 14px;font-size:11px;color:#666;cursor:pointer;font-family:'Barlow',sans-serif;font-weight:600;letter-spacing:.06em;text-transform:uppercase">TV</button>
     </div>
   </nav>
   <div class="hero">
@@ -258,17 +278,16 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
   </div>
   <div class="metrics">
     <div class="mc c1"><div class="mc-lbl">Due today</div><div class="mc-val">{total_today}</div></div>
-    <div class="mc c2"><div class="mc-lbl">Active agents</div><div class="mc-val">{active_agents}</div></div>
+    <div class="mc c2" id="overdue-card"><div class="mc-lbl">Overdue now</div><div class="mc-val" id="overdue-count">0</div></div>
     <div class="mc c3"><div class="mc-lbl">Priority today</div><div class="mc-val">{priority_today}</div></div>
     <div class="mc c4"><div class="mc-lbl">Quoted verbal</div><div class="mc-val">{quoted_verbal}</div></div>
     <div class="mc c5"><div class="mc-lbl">Quoted email</div><div class="mc-val">{quoted_email}</div></div>
     <div class="mc c6"><div class="mc-lbl">Due next week</div><div class="mc-val">{total_next_week}</div></div>
-    <div class="mc c3" id="overdue-card" style="display:none"><div class="mc-lbl">Overdue now</div><div class="mc-val" id="overdue-count">0</div></div>
   </div>
-  <div class="sec-head"><span class="sec-head-lbl">This week</span></div>
-  <div class="week-strip" style="margin-bottom:1.5rem">{week_strip_html(this_week)}</div>
-  <div class="sec-head"><span class="sec-head-lbl">Next week</span></div>
-  <div class="week-strip" style="margin-bottom:1.5rem">{week_strip_html(next_week)}</div>
+  <div class="sec-head" id="this-week-head"><span class="sec-head-lbl">This week</span></div>
+  <div class="week-strip" id="this-week-strip" style="margin-bottom:1.5rem">{week_strip_html(this_week)}</div>
+  <div class="sec-head" id="next-week-head"><span class="sec-head-lbl">Next week</span></div>
+  <div class="week-strip" id="next-week-strip" style="margin-bottom:1.5rem">{week_strip_html(next_week)}</div>
   <div class="sec-head"><span class="sec-head-lbl">By account manager</span></div>
   <div class="tabs"><button class="tb on">Today</button></div>
   <div class="ag-grid">{agent_cards_html()}</div>
@@ -287,11 +306,13 @@ table.qt tr:hover td{{background:rgba(255,255,255,.03)}}
       <option value="">All stages</option>
       <option value="awaiting pac">Awaiting PAC</option>
       <option value="awaiting sign">Awaiting Sign</option>
-      <option value="quoted verbal">Quoted verbal</option>
-      <option value="quoted email">Quoted email</option>
+      <option value="awaiting dd">Awaiting DD</option>
+      <option value="qtd verbal">Quoted verbal</option>
+      <option value="qtd email">Quoted email</option>
       <option value="quoted">Quoted</option>
       <option value="cust. req.">Customer requested</option>
       <option value="not eligible">Not eligible</option>
+      <option value="call back complete">Call back complete</option>
     </select>
     <span class="shw" id="shw"></span>
   </div>
@@ -315,6 +336,20 @@ function updateClock() {{
 }}
 setInterval(updateClock, 1000);
 updateClock();
+
+// TV mode
+let tvMode = false;
+function toggleTV() {{
+  tvMode = !tvMode;
+  document.body.classList.toggle('tv-mode', tvMode);
+  document.getElementById('tv-btn').textContent = tvMode ? 'Exit TV' : 'TV';
+  if (tvMode) {{
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  }} else {{
+    document.exitFullscreen && document.exitFullscreen();
+  }}
+}}
+document.addEventListener('keydown', e => {{ if(e.key === 'Escape' && tvMode) toggleTV(); }});
 
 // Overdue logic - runs every 30 seconds
 function checkOverdue() {{
@@ -353,11 +388,28 @@ function checkOverdue() {{
   // Update overdue metric card
   const card = document.getElementById('overdue-card');
   document.getElementById('overdue-count').textContent = overdueCount;
-  card.style.display = overdueCount > 0 ? '' : 'none';
+  card.style.display = '';
 }}
 
 setInterval(checkOverdue, 30000);
 checkOverdue();
+
+// Auto-refresh when new data is available
+const loadedAt = new Date().toISOString();
+async function checkForUpdates() {{
+  try {{
+    const res = await fetch('https://api.github.com/repos/mattbox1/callback-wallboard/commits/main?t=' + Date.now());
+    const data = await res.json();
+    const latestCommit = data.commit.committer.date;
+    if (latestCommit > loadedAt) {{
+      console.log('New data available, reloading...');
+      window.location.reload();
+    }}
+  }} catch(e) {{
+    console.log('Update check failed:', e);
+  }}
+}}
+setInterval(checkForUpdates, 5 * 60 * 1000);
 
 function filterQ() {{
   const ag = document.getElementById('qa').value.toLowerCase();
@@ -366,8 +418,10 @@ function filterQ() {{
   allRows.forEach(tr => {{
     const cells = tr.querySelectorAll('td');
     const rowAg = cells[4] ? cells[4].textContent.toLowerCase() : '';
-    const rowSt = cells[3] ? cells[3].textContent.toLowerCase() : '';
-    const show = (!ag || rowAg.includes(ag.split(' ').pop())) && (!st || rowSt.includes(st.split(' ')[0]));
+    const rowSt = cells[3] ? cells[3].textContent.toLowerCase().trim() : '';
+    const agMatch = !ag || rowAg.replace(/[.]/g,'').replace(/ /g,'').includes(ag.replace(/ /g,'').toLowerCase());
+    const stMatch = !st || rowSt === st.toLowerCase();
+    const show = agMatch && stMatch;
     tr.style.display = show ? '' : 'none';
     if(show) shown++;
   }});
