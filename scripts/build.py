@@ -412,7 +412,7 @@ async function checkForUpdates() {{
     console.log('Update check failed:', e);
   }}
 }}
-setInterval(checkForUpdates, 2 * 60 * 1000);
+setInterval(checkForUpdates, 60 * 1000);
 checkForUpdates();
 
 function filterQ() {{
