@@ -405,8 +405,10 @@ async function checkForUpdates() {{
       lastKnownSha = sha;
       console.log('Tracking commit:', sha.slice(0,7));
     }} else if (sha !== lastKnownSha) {{
-      console.log('New data available, reloading...');
-      window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+      console.log('New data detected, reloading in 90 seconds...');
+      setTimeout(() => {{
+        window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+      }}, 90000);
     }}
   }} catch(e) {{
     console.log('Update check failed:', e);
